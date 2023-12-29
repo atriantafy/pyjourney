@@ -404,7 +404,6 @@ class PyJourney:
                 for i in range(num_images):
                     filename = f"{filename_prefix}{i}.jpg"
                     PyJourney.save_image(images[i], filename)
-                    error_print(f"Saved image in {filename}")
             return images[:num_images]
         finally:
             self._close_driver()
@@ -423,7 +422,14 @@ def _check_env_vars():
             sys.exit(1)
 
 
-if __name__ == "__main__":
+def main():
+    """
+    Entry point for the pyjourney command-line interface.
+
+    Parses command-line arguments and executes the image
+    generation process using the PyJourney class.
+    """
+
     parser = argparse.ArgumentParser(description="Generate Midjourney Images")
     parser.add_argument("prompt", type=str, help="Prompt to send to Midjourney bot")
     parser.add_argument(
@@ -449,9 +455,21 @@ if __name__ == "__main__":
 
     mj_api = PyJourney()
 
-    mj_api.imagine(
-        prompt=args.prompt,
-        filename_prefix=args.filename_prefix,
-        num_images=args.num_images,
-        aspect_ratio=args.aspect_ratio,
-    )
+    try:
+        images = mj_api.imagine(
+            prompt=args.prompt,
+            filename_prefix=args.filename_prefix,
+            num_images=args.num_images,
+            aspect_ratio=args.aspect_ratio,
+        )
+        error_print("Image generation completed successfully.")
+        for i, img in enumerate(images):
+            filename = f"{args.filename_prefix}{i}.jpg"
+            PyJourney.save_image(img, filename)
+            error_print(f"Saved image in {filename}")
+    except Exception as e:
+        error_print(f"Error during image generation: {str(e)}")
+
+
+if __name__ == "__main__":
+    main()

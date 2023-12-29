@@ -12,4 +12,9 @@ setup(
     version="0.1",
     packages=find_packages(),
     install_requires=read_requirements(),
+    entry_points={
+        "console_scripts": [
+            "pyjourney=pyjourney.pyjourney:main",  # "main" is the entry point function in pyjourney.py
+        ],
+    },
 )
