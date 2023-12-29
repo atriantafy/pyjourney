@@ -44,7 +44,9 @@ PyJourney has a few limitations to keep in mind:
 - **Authentication Method**: PyJourney uses your Discord email and password for authentication. It does not utilize Discord's API for login, which means you need to provide these credentials directly.
 - **Environment Variables**: You need to provide the required environment variables (as described in the Requirements section above) before running pyjourney. In a future version I might introduce a better way of storing credentials in an encrypted form and managed by the tool so that you don't have to deal with this.
 
-### Example Usage of PyJourney
+## Usage
+
+### Example Usage of the PyJourney Class
 
 Here is a simple example demonstrating how to use the `PyJourney` class to generate an image from a textual prompt:
 
