@@ -26,8 +26,11 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.firefox.options import Options
 import requests
 from PIL import Image
+from hashlib import md5
+import diskcache
 
 DEFAULT_IMAGE_FETCH_TIMEOUT = 60 * 5
+DEFAULT_CACHE_TTL = 60 * 60 * 24  # 1 Day
 
 
 class PyJourneyException(Exception):
@@ -354,6 +357,8 @@ class PyJourney:
         num_images: int,
         filename_prefix: Union[str, None] = None,
         aspect_ratio: str = "16:9",
+        use_cache_file: Union[str, None] = None,
+        cache_ttl: float = DEFAULT_CACHE_TTL,
     ) -> list:
         """
         Generate and retrieve images based on a given prompt using the Midjourney bot.
@@ -361,13 +366,18 @@ class PyJourney:
         This method sends a prompt to the Midjourney bot, waits for image generation,
         and saves the resulting images with an optional filename prefix. It handles
         connecting to Discord, navigating to the bot channel, sending the prompt,
-        and processing the images.
+        and processing the images. Optionally, it uses a disk cache to store and
+        retrieve images based on the prompt and aspect ratio.
 
         Args:
             prompt (str): The prompt for the Midjourney bot.
             num_images (int): Number of images to generate (1-4).
             filename_prefix (Union[str, None]): Prefix for saved image filenames.
             aspect_ratio (str): Aspect ratio for images (e.g., "16:9").
+            use_cache_file (Union[str, None]): Path to the cache file. If provided,
+                cached images are used to avoid regenerating images for the same prompt.
+                If None, caching is not used.
+            cache_ttl (float): Time-to-live for cache entries, in seconds.
 
         Returns:
             List[Image]: PIL Image objects representing the generated images.
@@ -379,34 +389,49 @@ class PyJourney:
             PyJourneyUnexpectedStatusException: If unexpected content in bot's
                                                 status message.
             Selenium WebDriver exceptions: Various exceptions from WebDriver
-                                        operations, like connection issues.
+                                            operations, like connection issues.
         """
 
         if num_images < 0 or num_images > 4:
             raise PyJourneyException("num_images can be between 1 and 4")
-        if not self._discord_email or not self._discord_password:
-            raise PyJourneyException("Discord credentials are not set")
-        error_print("Connecting to Discord ...")
-        self._init_driver()
-        try:
-            self._login_to_discord()
+        cache_key = md5(f"{prompt}_{aspect_ratio}".encode("utf-8")).hexdigest()
+        if use_cache_file is not None:
+            cache = diskcache.Cache(use_cache_file)
+        else:
+            cache = None
 
-            self._start_bot_chat()
+        if cache is not None and cache_key in cache:
+            four_images = cache.get(cache_key)
+        else:
+            four_images = None
 
-            last_message_id = self._get_last_message_id()
+        if four_images is None:
+            if not self._discord_email or not self._discord_password:
+                raise PyJourneyException("Discord credentials are not set")
+            error_print("Connecting to Discord ...")
+            self._init_driver()
+            try:
+                self._login_to_discord()
 
-            self._send_message_to_midjourney_bot(
-                f"/imagine prompt: {prompt} --ar {aspect_ratio}"
-            )
+                self._start_bot_chat()
 
-            images = self._get_4_images(last_message_id)
-            if filename_prefix is not None:
-                for i in range(num_images):
-                    filename = f"{filename_prefix}{i}.jpg"
-                    PyJourney.save_image(images[i], filename)
-            return images[:num_images]
-        finally:
-            self._close_driver()
+                last_message_id = self._get_last_message_id()
+
+                self._send_message_to_midjourney_bot(
+                    f"/imagine prompt: {prompt} --ar {aspect_ratio}"
+                )
+
+                four_images = self._get_4_images(last_message_id)
+                if cache is not None:
+                    cache.set(cache_key, four_images, cache_ttl)
+            finally:
+                self._close_driver()
+
+        if filename_prefix is not None:
+            for i in range(num_images):
+                filename = f"{filename_prefix}{i}.jpg"
+                PyJourney.save_image(four_images[i], filename)
+        return four_images[:num_images]
 
 
 def _check_env_vars():
@@ -448,7 +473,12 @@ def main():
         default="16:9",
         help="Aspect ratio for the images (default: '16:9').",
     )
-
+    parser.add_argument(
+        "--use_cache_file",
+        type=str,
+        default=None,
+        help="If set, use this file for caching images. Default is None.",
+    )
     args = parser.parse_args()
 
     _check_env_vars()
@@ -461,6 +491,7 @@ def main():
             filename_prefix=args.filename_prefix,
             num_images=args.num_images,
             aspect_ratio=args.aspect_ratio,
+            use_cache_file=args.use_cache_file,
         )
         error_print("Image generation completed successfully.")
         for i, img in enumerate(images):
